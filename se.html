@@ -82,9 +82,6 @@
   </div>
 
 <script>
-/* -------------- utilidades lineales -------------- */
-
-// crear inputs para matriz A, b, x0
 const matrixArea = document.getElementById('matrixArea');
 const createBtn = document.getElementById('create');
 const nInput = document.getElementById('n');
@@ -119,7 +116,6 @@ function createMatrixInputs(){
 createBtn.addEventListener('click', createMatrixInputs);
 fillBtn.addEventListener('click', ()=>{
   nInput.value = 4; createMatrixInputs();
-  // ejemplo tridiagonal
   const n = parseInt(nInput.value);
   for(let i=0;i<n;i++){
     for(let j=0;j<n;j++){
@@ -158,14 +154,12 @@ function norm2(v){
 function normInf(v){ let m=0; for(let i=0;i<v.length;i++){ m = Math.max(m, Math.abs(v[i])); } return m; }
 function subVec(a,b){ return a.map((v,i)=>v - b[i]); }
 
-// multiply matrix x vector
 function matVec(A, x){
   const n=A.length; const r=new Array(n).fill(0);
   for(let i=0;i<n;i++){ let s=0; for(let j=0;j<n;j++) s += A[i][j]*x[j]; r[i]=s; }
   return r;
 }
 
-// solve lower triangular system L x = b  (L has nonzero diag)
 function solveLower(L, b){
   const n = L.length; const x = new Array(n).fill(0);
   for(let i=0;i<n;i++){
@@ -176,14 +170,11 @@ function solveLower(L, b){
   return x;
 }
 
-// solve general linear system via Gauss elimination (for small n OK)
 function solveLinear(Aorig, borig){
   const n = Aorig.length;
-  // clone
   const A = Aorig.map(r=>r.slice());
   const b = borig.slice();
   for(let k=0;k<n;k++){
-    // pivot
     let p = k; let maxv = Math.abs(A[k][k]);
     for(let i=k+1;i<n;i++){ if(Math.abs(A[i][k])>maxv){ maxv=Math.abs(A[i][k]); p=i; } }
     if(maxv === 0) throw new Error('Matriz singular en solveLinear');
@@ -203,7 +194,6 @@ function solveLinear(Aorig, borig){
   return x;
 }
 
-/* ---------------- Métodos iterativos (idénticos a Python) ---------------- */
 
 function calcular_errores(x_new, x_old){
   const diff = subVec(x_new, x_old);
@@ -282,7 +272,6 @@ function sor(A,b,x0,w,tol,max_iter){
   return [x, errores, tabla];
 }
 
-/* ------------- Matrices de iteración y radio espectral (potencia) ------------- */
 
 function getDiagMatrix(A){
   const n = A.length; const D = Array.from({length:n},()=>new Array(n).fill(0));
@@ -300,7 +289,6 @@ function getUpperTriangular(A){
   return U;
 }
 
-// compute B_J = D^{-1} (D - A)  (same as Python: inv(D) @ (D - A))
 function jacobiIterationMatrix(A){
   const n = A.length;
   const B = Array.from({length:n}, ()=> new Array(n).fill(0));
@@ -312,18 +300,13 @@ function jacobiIterationMatrix(A){
   return B;
 }
 
-// compute B_GS = inv(Lower) * (Lower - A)  where Lower = tril(A)
 function gaussSeidelIterationMatrix(A){
   const n=A.length;
   const L = getLowerTriangular(A);
-  // compute C = L - A
   const C = Array.from({length:n}, ()=> new Array(n).fill(0));
   for(let i=0;i<n;i++) for(let j=0;j<n;j++) C[i][j] = L[i][j] - A[i][j];
-  // Now solve L * X = C  for X (each column)
   const X = Array.from({length:n}, ()=> new Array(n).fill(0));
-  // Solve for each column k
   for(let k=0;k<n;k++){
-    // construct column vector c_k
     const c_k = new Array(n);
     for(let i=0;i<n;i++) c_k[i] = C[i][k];
     const xcol = solveLower(L, c_k);
@@ -332,7 +315,6 @@ function gaussSeidelIterationMatrix(A){
   return X;
 }
 
-// compute SOR iteration matrix: B_sor = inv(D + wL) * ((1-w)D - wU)
 function sorIterationMatrix(A,w){
   const n=A.length;
   const D = Array.from({length:n}, ()=> new Array(n).fill(0));
@@ -340,14 +322,11 @@ function sorIterationMatrix(A,w){
   const U = Array.from({length:n}, ()=> new Array(n).fill(0));
   for(let i=0;i<n;i++){
     D[i][i] = A[i][i];
-    for(let j=0;j<i;j++) L[i][j] = -A[i][j]; // note sign consistent with formula below
+    for(let j=0;j<i;j++) L[i][j] = -A[i][j];
     for(let j=i+1;j<n;j++) U[i][j] = A[i][j];
   }
-  // We'll build M1 = D + w*(-L) ??? To avoid sign confusion, use standard formula:
-  // Usually B_SOR = (D + wL)^{-1} * ((1-w)D - wU)
-  // Note: here L is strictly lower part of A (no sign).
-  // Build matrices accordingly:
-  const Lower = Array.from({length:n}, ()=> new Array(n).fill(0)); // D + w*L_strict
+  
+  const Lower = Array.from({length:n}, ()=> new Array(n).fill(0)); 
   const L_strict = Array.from({length:n}, ()=> new Array(n).fill(0));
   const U_strict = Array.from({length:n}, ()=> new Array(n).fill(0));
   for(let i=0;i<n;i++){
@@ -355,21 +334,18 @@ function sorIterationMatrix(A,w){
     for(let j=0;j<i;j++){ L_strict[i][j] = A[i][j]; Lower[i][j] = w * A[i][j]; }
     for(let j=i+1;j<n;j++) U_strict[i][j] = A[i][j];
   }
-  for(let i=0;i<n;i++) Lower[i][i] = A[i][i]; // ensure diag present (already)
-  // Build M_right = (1-w)D - w*U_strict
+  for(let i=0;i<n;i++) Lower[i][i] = A[i][i]; 
   const Mright = Array.from({length:n}, ()=> new Array(n).fill(0));
   for(let i=0;i<n;i++){
     Mright[i][i] = (1-w)*A[i][i];
     for(let j=i+1;j<n;j++) Mright[i][j] = -w * U_strict[i][j];
   }
-  // Now compute B = inv(Lower) * Mright ; Lower is D + w*L_strict (we need to add diag into Lower)
   for(let i=0;i<n;i++){
     for(let j=0;j<i;j++){
       Lower[i][j] = w * L_strict[i][j];
     }
     Lower[i][i] = A[i][i];
   }
-  // Solve for each column of B: Lower * X_col = Mright_col
   const B = Array.from({length:n}, ()=> new Array(n).fill(0));
   for(let k=0;k<n;k++){
     const col = new Array(n);
@@ -380,14 +356,10 @@ function sorIterationMatrix(A,w){
   return B;
 }
 
-// método de la potencia para estimar radio espectral (valor absoluto dominante)
 function spectralRadiusPowerMethod(B, maxIter=200, tol=1e-10){
   const n = B.length;
-  // handle trivial
   if(n===0) return 0;
-  // start with vector ones
   let v = new Array(n).fill(1);
-  // normalize
   let normv = norm2(v);
   for(let i=0;i<n;i++) v[i] /= normv;
   let lambda_old = 0;
@@ -395,7 +367,6 @@ function spectralRadiusPowerMethod(B, maxIter=200, tol=1e-10){
     const w = matVec(B, v);
     const lambda = norm2(w);
     if(lambda === 0) return 0;
-    // normalize
     for(let i=0;i<n;i++) v[i] = w[i] / lambda;
     if(Math.abs(lambda - lambda_old) < tol) return Math.abs(lambda);
     lambda_old = lambda;
@@ -403,7 +374,6 @@ function spectralRadiusPowerMethod(B, maxIter=200, tol=1e-10){
   return Math.abs(lambda_old);
 }
 
-/* -------------- UI de cálculo y presentación -------------- */
 
 function prettyVec(v){
   return '[' + v.map(x=>Number.isFinite(x)? (Math.round(x*1e8)/1e8).toString() : 'NaN').join(', ') + ']';
@@ -422,14 +392,11 @@ computeBtn.addEventListener('click', ()=>{
 
     const {n,A,b,x0} = readInputs();
 
-    // Validaciones
     if(n <= 0) throw new Error('Tamaño inválido');
-    // run methods
     const [x_jac, e_jac, t_jac] = jacobi(A,b,x0,tol,maxit);
     const [x_gs, e_gs, t_gs] = gauss_seidel(A,b,x0,tol,maxit);
     const [x_sor, e_sor, t_sor] = sor(A,b,x0,w,tol,maxit);
 
-    // iteration matrices
     const BJ = jacobiIterationMatrix(A);
     const BGS = gaussSeidelIterationMatrix(A);
     const BSOR = sorIterationMatrix(A,w);
@@ -438,7 +405,6 @@ computeBtn.addEventListener('click', ()=>{
     const rhoGS = spectralRadiusPowerMethod(BGS);
     const rhoSOR = spectralRadiusPowerMethod(BSOR);
 
-    // prepare output summary (last error triple)
     const last = (arr)=> arr.length? arr[arr.length-1] : [0,0,0];
     const outHTML = `
       <div><strong>Jacobi</strong> — solución: ${prettyVec(x_jac)}</div>
@@ -455,7 +421,6 @@ computeBtn.addEventListener('click', ()=>{
     `;
     document.getElementById('output').innerHTML = outHTML;
 
-    // tables
     const tablesDiv = document.getElementById('tables');
     tablesDiv.innerHTML = `
       <h4>Jacobi</h4>
@@ -466,7 +431,6 @@ computeBtn.addEventListener('click', ()=>{
       ${tableLastRows(t_sor)}
     `;
 
-    // store last result for download
     window._lastIterativeResult = {
       A: A, b: b, x0: x0,
       jac: {sol:x_jac, errors: e_jac, tabla: t_jac, rho: rhoJ},
@@ -517,7 +481,6 @@ resetBtn.addEventListener('click', ()=>{
   window._lastIterativeResult = null;
 });
 
-// init
 createMatrixInputs();
 
 </script>
