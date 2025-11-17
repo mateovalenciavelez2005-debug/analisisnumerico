@@ -44,24 +44,18 @@
 
 <script>
 
-// ------------------------------
-//     FUNCIÓN PRINCIPAL
-// ------------------------------
 function calcular() {
     let f_str = document.getElementById("fx").value;
     let a = parseFloat(document.getElementById("a").value);
     let b = parseFloat(document.getElementById("b").value);
     let n = parseInt(document.getElementById("n").value);
 
-    // Permitir usar ^
     f_str = f_str.replaceAll("^", "**");
 
-    // Crear función evaluable
     const f = x => math.evaluate(f_str, {x: x});
 
     let mensajes = "";
 
-    // Validaciones como Python
     if (n % 2 !== 0) {
         mensajes += "Advertencia: Simpson 1/3 requiere n par. Se incrementó en 1.<br>";
         n += 1;
@@ -74,43 +68,28 @@ function calcular() {
 
     const h = (b - a) / n;
 
-    // Crear xi y f(xi)
     const xi = [...Array(n + 1).keys()].map(i => a + i * h);
     const fi = xi.map(v => f(v));
 
-    // ------------------------------
-    //    TRAPECIO COMPUESTO
-    // ------------------------------
     const sumTrap = fi.slice(1, -1).reduce((a, b) => a + b, 0);
     const trap = (h / 2) * (fi[0] + 2 * sumTrap + fi[n]);
 
-    // ------------------------------
-    //    SIMPSON 1/3 COMPUESTO
-    // ------------------------------
     const sum4 = fi.filter((v, i) => i % 2 === 1 && i < n).reduce((a, b) => a + b, 0);
     const sum2 = fi.filter((v, i) => i % 2 === 0 && i !== 0 && i !== n).reduce((a, b) => a + b, 0);
     const simp13 = (h / 3) * (fi[0] + 4 * sum4 + 2 * sum2 + fi[n]);
 
-    // ------------------------------
-    //    SIMPSON 3/8 COMPUESTO
-    // ------------------------------
     const sum3 = fi.slice(1, n).reduce((a, b, i) => {
         return a + ((i + 1) % 3 === 0 ? 2 * b : 3 * b);
     }, 0);
     const simp38 = (3 * h / 8) * (fi[0] + sum3 + fi[n]);
 
-    // ------------------------------
-    //    INTEGRAL EXACTA
-    // ------------------------------
     let integral_exacta = null;
 
     try {
-        // Intento simbólico
         const expr = math.parse(f_str);
         const F = math.integral(expr, "x");
         integral_exacta = F.evaluate({x: b}) - F.evaluate({x: a});
     } catch (e) {
-        // Si falla, usar integración numérica muy fina (fallback)
         const steps = 20000;
         const hh = (b - a) / steps;
         let s = 0;
@@ -123,9 +102,6 @@ function calcular() {
         mensajes += "La integral exacta simbólica no fue posible. Se usó integración numérica fina.<br>";
     }
 
-    // ------------------------------
-    //      ERRORES
-    // ------------------------------
     const errTrap = Math.abs(integral_exacta - trap);
     const err13 = Math.abs(integral_exacta - simp13);
     const err38 = Math.abs(integral_exacta - simp38);
@@ -134,9 +110,6 @@ function calcular() {
     const rel13 = err13 / Math.abs(integral_exacta);
     const rel38 = err38 / Math.abs(integral_exacta);
 
-    // ------------------------------
-    //     MOSTRAR RESULTADOS
-    // ------------------------------
     document.getElementById("salida").innerHTML = `
         ${mensajes}
         <b>Integral exacta:</b> ${integral_exacta.toFixed(10)}<br><br>
