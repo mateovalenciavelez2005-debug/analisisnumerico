@@ -1,10 +1,25 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Mi primera página</title>
+    <meta charset="UTF-8">
+    <title>Mi página con código</title>
+
+    <!-- Highlight.js CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/default.min.css">
 </head>
 <body>
-    <h1>Trabajo Final Análisis Numérico</h1>
-    <p>Esta es mi nueva información.</p>
+
+    <h1>Mi página</h1>
+
+    <h2>Ejemplo de código Python</h2>
+    <pre><code class="language-python">
+def metodo_trapecio(f, a, b, n):
+    h = (b - a) / n
+    return (h/2) * (f(a) + 2*sum(f(a + i*h) for i in range(1,n)) + f(b))
+    </code></pre>
+
+    <!-- Highlight.js Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <script>hljs.highlightAll();</script>
 </body>
 </html>
