@@ -13,9 +13,121 @@
 
     <h2>Ejemplo de código Python</h2>
     <pre><code class="language-python">
-def metodo_trapecio(f, a, b, n):
-    h = (b - a) / n
-    return (h/2) * (f(a) + 2*sum(f(a + i*h) for i in range(1,n)) + f(b))
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.interpolate import BarycentricInterpolator, CubicSpline, interp1d
+from numpy.polynomial.polynomial import Polynomial
+import sympy as sp
+
+def leer_datos():
+    n = int(input("Ingrese el número de puntos (máx 8): "))
+    x = []
+    y = []
+    for i in range(n):
+        xi = float(input(f"x[{i}]: "))
+        yi = float(input(f"y[{i}]: "))
+        x.append(xi)
+        y.append(yi)
+    return np.array(x), np.array(y)
+
+def vandermonde_interpolation(x, y):
+    V = np.vander(x, increasing=True)
+    coef = np.linalg.solve(V, y)
+    return coef
+
+def newton_interpolation(x, y):
+    n = len(x)
+    coef = np.copy(y)
+    for j in range(1, n):
+        coef[j:] = (coef[j:] - coef[j - 1:-1]) / (x[j:] - x[j - 1])
+    return coef
+
+def eval_newton(coef, x_data, x):
+    n = len(coef)
+    result = coef[-1]
+    for i in range(n - 2, -1, -1):
+        result = result * (x - x_data[i]) + coef[i]
+    return result
+
+def imprimir_polinomio(coef, nombre):
+    x = sp.Symbol('x')
+    pol = sum(coef[i] * x**i for i in range(len(coef)))
+    print(f"\nPolinomio de {nombre}:")
+    print(sp.simplify(pol))
+
+def graficar(x, y, fx_dict):
+    x_vals = np.linspace(min(x)-1, max(x)+1, 400)
+    plt.figure(figsize=(10, 6))
+    plt.plot(x, y, 'o', label='Datos')
+    for metodo, f in fx_dict.items():
+        plt.plot(x_vals, f(x_vals), label=metodo)
+    plt.title("Interpolación con varios métodos")
+    plt.xlabel("x")
+    plt.ylabel("y")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+def calcular_error(f_ref, f_test, x_vals):
+    return np.linalg.norm(f_ref(x_vals) - f_test(x_vals))
+
+def main():
+    x, y = leer_datos()
+
+    # Vandermonde
+    coef_vand = vandermonde_interpolation(x, y)
+    f_vand = lambda z: np.polyval(coef_vand[::-1], z)
+    imprimir_polinomio(coef_vand, "Vandermonde")
+
+    # Newton
+    coef_newt = newton_interpolation(x, y)
+    f_newt = lambda z: eval_newton(coef_newt, x, z)
+    imprimir_polinomio(coef_newt, "Newton")
+
+    # Lagrange (usamos interpolador de scipy equivalente)
+    lagrange_poly = BarycentricInterpolator(x, y)
+    f_lagrange = lambda z: lagrange_poly(z)
+
+    # Spline lineal y cúbico
+    spline_lin = interp1d(x, y, kind='linear', fill_value="extrapolate")
+    spline_cub = CubicSpline(x, y)
+    f_spline_lin = lambda z: spline_lin(z)
+    f_spline_cub = lambda z: spline_cub(z)
+
+    # Graficar todos
+    fx_dict = {
+        "Vandermonde": f_vand,
+        "Newton": f_newt,
+        "Lagrange": f_lagrange,
+        "Spline lineal": f_spline_lin,
+        "Spline cúbico": f_spline_cub,
+    }
+    graficar(x, y, fx_dict)
+
+    # Comparación de errores
+    x_vals = np.linspace(min(x), max(x), 100)
+    ref_func = f_lagrange  # puedes cambiar a otra como base de comparación
+    errores = {k: calcular_error(ref_func, f, x_vals) for k, f in fx_dict.items()}
+
+    print("\nErrores comparativos (vs Lagrange):")
+    for metodo, err in errores.items():
+        print(f"{metodo}: {err:.2e}")
+
+    mejor_metodo = min(errores, key=errores.get)
+    print(f"\nEl mejor método según error: {mejor_metodo}")
+
+    generar = input("¿Desea generar informe automático? (s/n): ")
+    if generar.lower() == 's':
+        with open("informe_interpolacion.txt", "w") as f:
+            f.write("Informe de interpolación\n\n")
+            for metodo, err in errores.items():
+                f.write(f"{metodo}: error = {err:.4e}\n")
+            f.write(f"\nMejor método: {mejor_metodo}\n")
+        print("Informe generado como 'informe_interpolacion.txt'")
+
+if __name__ == "__main__":
+    main()
+
     </code></pre>
 
     <!-- Highlight.js Scripts -->
