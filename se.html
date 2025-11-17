@@ -1,1 +1,526 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Métodos Iterativos — Jacobi / Gauss-Seidel / SOR</title>
+
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:18px;max-width:1100px;color:#111}
+    h1{font-size:20px;margin-bottom:6px}
+    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+    label{font-weight:600}
+    input[type=number], input[type=text], textarea{padding:6px;border:1px solid #ccc;border-radius:6px}
+    table{border-collapse:collapse;margin-top:8px;width:100%}
+    td,th{padding:6px;border:1px solid #ddd;text-align:center}
+    button{padding:8px 12px;border:none;border-radius:8px;background:#2563eb;color:white;cursor:pointer}
+    button.ghost{background:#eee;color:#111}
+    pre.pol{background:#f5f5f5;padding:10px;border-radius:6px;overflow:auto}
+    .controls{margin:12px 0;display:flex;gap:8px;flex-wrap:wrap}
+    .side{width:360px}
+    .results{margin-top:12px}
+    .small{font-size:13px;color:#555}
+    .two-col{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap}
+    .panel{background:#fff;padding:12px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.04)}
+    .center{display:flex;justify-content:center}
+    .code{white-space:pre-wrap;font-family:monospace;background:#f7f7f7;padding:8px;border-radius:6px}
+  </style>
+</head>
+<body>
+  <h1>Métodos Iterativos</h1>
+  <p class="small">Jacobi, Gauss–Seidel y SOR. Ingresa la matriz A, b, x₀, tolerancia y parámetros. (Máx 7×7)</p>
+
+  <div class="row">
+    <label for="n">Tamaño n (1–7):</label>
+    <input id="n" type="number" value="3" min="1" max="7" style="width:70px">
+    <button id="create">Crear matriz</button>
+    <button id="fillExample" class="ghost">Ejemplo</button>
+  </div>
+
+  <div id="matrixArea"></div>
+
+  <div class="controls">
+    <button id="compute">Calcular</button>
+    <button id="download" class="ghost">Descargar informe (.txt)</button>
+    <button id="reset" class="ghost">Reset</button>
+  </div>
+
+  <div class="two-col">
+    <div style="flex:1;">
+      <div class="panel">
+        <h3>Resultados</h3>
+        <div id="output" class="results small">Aún no se ha calculado.</div>
+      </div>
+
+      <div class="panel" style="margin-top:12px">
+        <h3>Tabla de iteraciones (últimas 20 filas por método)</h3>
+        <div id="tables"></div>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="panel">
+        <h4>Parámetros</h4>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <label>Tolerancia:</label><input id="tol" type="number" step="any" value="1e-6">
+          <label>Max iteraciones:</label><input id="maxit" type="number" step="1" value="200">
+          <label>Omega (SOR):</label><input id="omega" type="number" step="any" value="1.2">
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:12px">
+        <h4>Info rápida</h4>
+        <div class="small">
+          <ul>
+            <li>Los cálculos se realizan en el navegador (JavaScript).</li>
+            <li>Radio espectral aproximado con método de la potencia.</li>
+            <li>Si tu matriz no es diagonal dominante, los métodos pueden no converger.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* -------------- utilidades lineales -------------- */
+
+// crear inputs para matriz A, b, x0
+const matrixArea = document.getElementById('matrixArea');
+const createBtn = document.getElementById('create');
+const nInput = document.getElementById('n');
+const fillBtn = document.getElementById('fillExample');
+const computeBtn = document.getElementById('compute');
+const downloadBtn = document.getElementById('download');
+const resetBtn = document.getElementById('reset');
+
+function createMatrixInputs(){
+  const n = Math.max(1, Math.min(7, parseInt(nInput.value)||3));
+  nInput.value = n;
+  let html = '<div style="margin-top:8px">';
+  html += '<table><thead><tr><th></th>';
+  for(let j=0;j<n;j++) html += `<th>a[${j}]</th>`;
+  html += '</tr></thead><tbody>';
+  for(let i=0;i<n;i++){
+    html += `<tr><th>fila ${i}</th>`;
+    for(let j=0;j<n;j++){
+      html += `<td><input id="a_${i}_${j}" type="number" step="any" value="${(i===j?4: (Math.abs(i-j)===1? -1: 0))}" style="width:80px"></td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>`;
+  html += '<div style="margin-top:10px"><label>Vector b (fila por fila):</label><br>';
+  for(let i=0;i<n;i++) html += `<input id="b_${i}" type="number" step="any" value="${1}" style="width:80px;margin:4px">`;
+  html += '<br><label>Vector inicial x0 (fila por fila):</label><br>';
+  for(let i=0;i<n;i++) html += `<input id="x0_${i}" type="number" step="any" value="0" style="width:80px;margin:4px">`;
+  html += '</div></div>';
+  matrixArea.innerHTML = html;
+}
+
+createBtn.addEventListener('click', createMatrixInputs);
+fillBtn.addEventListener('click', ()=>{
+  nInput.value = 4; createMatrixInputs();
+  // ejemplo tridiagonal
+  const n = parseInt(nInput.value);
+  for(let i=0;i<n;i++){
+    for(let j=0;j<n;j++){
+      const el = document.getElementById(`a_${i}_${j}`);
+      if(el) el.value = (i===j? 4 : (Math.abs(i-j)===1? -1 : 0));
+    }
+    const bi = document.getElementById(`b_${i}`);
+    if(bi) bi.value = i+1;
+    const x0i = document.getElementById(`x0_${i}`);
+    if(x0i) x0i.value = 0;
+  }
+});
+
+function readInputs(){
+  const n = parseInt(nInput.value);
+  const A = Array.from({length:n},()=>new Array(n).fill(0));
+  const b = new Array(n).fill(0);
+  const x0 = new Array(n).fill(0);
+  for(let i=0;i<n;i++){
+    for(let j=0;j<n;j++){
+      const val = parseFloat(document.getElementById(`a_${i}_${j}`).value);
+      A[i][j] = Number.isFinite(val)? val : 0;
+    }
+    const bv = parseFloat(document.getElementById(`b_${i}`).value);
+    b[i] = Number.isFinite(bv)? bv : 0;
+    const xv = parseFloat(document.getElementById(`x0_${i}`).value);
+    x0[i] = Number.isFinite(xv)? xv : 0;
+  }
+  return {n,A,b,x0};
+}
+
+function cloneVec(v){ return v.slice(); }
+function norm2(v){
+  let s=0; for(let i=0;i<v.length;i++){ s += v[i]*v[i]; } return Math.sqrt(s);
+}
+function normInf(v){ let m=0; for(let i=0;i<v.length;i++){ m = Math.max(m, Math.abs(v[i])); } return m; }
+function subVec(a,b){ return a.map((v,i)=>v - b[i]); }
+
+// multiply matrix x vector
+function matVec(A, x){
+  const n=A.length; const r=new Array(n).fill(0);
+  for(let i=0;i<n;i++){ let s=0; for(let j=0;j<n;j++) s += A[i][j]*x[j]; r[i]=s; }
+  return r;
+}
+
+// solve lower triangular system L x = b  (L has nonzero diag)
+function solveLower(L, b){
+  const n = L.length; const x = new Array(n).fill(0);
+  for(let i=0;i<n;i++){
+    let s = b[i];
+    for(let j=0;j<i;j++) s -= L[i][j]*x[j];
+    x[i] = s / L[i][i];
+  }
+  return x;
+}
+
+// solve general linear system via Gauss elimination (for small n OK)
+function solveLinear(Aorig, borig){
+  const n = Aorig.length;
+  // clone
+  const A = Aorig.map(r=>r.slice());
+  const b = borig.slice();
+  for(let k=0;k<n;k++){
+    // pivot
+    let p = k; let maxv = Math.abs(A[k][k]);
+    for(let i=k+1;i<n;i++){ if(Math.abs(A[i][k])>maxv){ maxv=Math.abs(A[i][k]); p=i; } }
+    if(maxv === 0) throw new Error('Matriz singular en solveLinear');
+    if(p !== k){ [A[k],A[p]]=[A[p],A[k]]; [b[k],b[p]]=[b[p],b[k]]; }
+    for(let i=k+1;i<n;i++){
+      const f = A[i][k] / A[k][k];
+      for(let j=k;j<n;j++) A[i][j] -= f*A[k][j];
+      b[i] -= f*b[k];
+    }
+  }
+  const x = new Array(n).fill(0);
+  for(let i=n-1;i>=0;i--){
+    let s = b[i];
+    for(let j=i+1;j<n;j++) s -= A[i][j]*x[j];
+    x[i] = s / A[i][i];
+  }
+  return x;
+}
+
+/* ---------------- Métodos iterativos (idénticos a Python) ---------------- */
+
+function calcular_errores(x_new, x_old){
+  const diff = subVec(x_new, x_old);
+  const error_abs = norm2(diff);
+  const denom2 = norm2(x_new) || 1e-16;
+  const error_rel2 = error_abs / denom2;
+  const error_rel_inf = normInf(diff) / (normInf(x_new) || 1e-16);
+  return [error_abs, error_rel2, error_rel_inf];
+}
+
+function jacobi(A,b,x0,tol,max_iter){
+  const n = A.length;
+  const x = x0.slice();
+  const errores = [];
+  const tabla = [];
+  const D = new Array(n);
+  for(let i=0;i<n;i++) D[i] = A[i][i];
+  for(let it=0; it<max_iter; it++){
+    const x_new = x.slice();
+    for(let i=0;i<n;i++){
+      let s = 0;
+      for(let j=0;j<n;j++) if(j!==i) s += A[i][j]*x[j];
+      x_new[i] = (b[i] - s) / A[i][i];
+    }
+    const err = calcular_errores(x_new, x);
+    errores.push(err);
+    tabla.push([it+1, x_new.slice(), err[0]]);
+    if(err[0] < tol) { return [x_new, errores, tabla]; }
+    for(let i=0;i<n;i++) x[i] = x_new[i];
+  }
+  return [x, errores, tabla];
+}
+
+function gauss_seidel(A,b,x0,tol,max_iter){
+  const n = A.length;
+  let x = x0.slice();
+  const errores = [];
+  const tabla = [];
+  for(let it=0; it<max_iter; it++){
+    const x_new = x.slice();
+    for(let i=0;i<n;i++){
+      let sum1 = 0;
+      for(let j=0;j<i;j++) sum1 += A[i][j]*x_new[j];
+      let sum2 = 0;
+      for(let j=i+1;j<n;j++) sum2 += A[i][j]*x[j];
+      x_new[i] = (b[i] - sum1 - sum2) / A[i][i];
+    }
+    const err = calcular_errores(x_new, x);
+    errores.push(err);
+    tabla.push([it+1, x_new.slice(), err[0]]);
+    if(err[0] < tol) return [x_new, errores, tabla];
+    x = x_new.slice();
+  }
+  return [x, errores, tabla];
+}
+
+function sor(A,b,x0,w,tol,max_iter){
+  const n = A.length;
+  let x = x0.slice();
+  const errores = [];
+  const tabla = [];
+  for(let it=0; it<max_iter; it++){
+    const x_new = x.slice();
+    for(let i=0;i<n;i++){
+      let sigma = 0;
+      for(let j=0;j<i;j++) sigma += A[i][j]*x_new[j];
+      for(let j=i+1;j<n;j++) sigma += A[i][j]*x[j];
+      x_new[i] = x[i] + w * (b[i] - sigma - A[i][i]*x[i]) / A[i][i];
+    }
+    const err = calcular_errores(x_new, x);
+    errores.push(err);
+    tabla.push([it+1, x_new.slice(), err[0]]);
+    if(err[0] < tol) return [x_new, errores, tabla];
+    x = x_new.slice();
+  }
+  return [x, errores, tabla];
+}
+
+/* ------------- Matrices de iteración y radio espectral (potencia) ------------- */
+
+function getDiagMatrix(A){
+  const n = A.length; const D = Array.from({length:n},()=>new Array(n).fill(0));
+  for(let i=0;i<n;i++) D[i][i] = A[i][i];
+  return D;
+}
+function getLowerTriangular(A){
+  const n=A.length; const L=Array.from({length:n}, ()=> new Array(n).fill(0));
+  for(let i=0;i<n;i++) for(let j=0;j<=i;j++) L[i][j] = A[i][j];
+  return L;
+}
+function getUpperTriangular(A){
+  const n=A.length; const U=Array.from({length:n}, ()=> new Array(n).fill(0));
+  for(let i=0;i<n;i++) for(let j=i;j<n;j++) U[i][j] = A[i][j];
+  return U;
+}
+
+// compute B_J = D^{-1} (D - A)  (same as Python: inv(D) @ (D - A))
+function jacobiIterationMatrix(A){
+  const n = A.length;
+  const B = Array.from({length:n}, ()=> new Array(n).fill(0));
+  for(let i=0;i<n;i++){
+    for(let j=0;j<n;j++){
+      B[i][j] = (i===j? 1 : 0) - (A[i][j] / A[i][i]);
+    }
+  }
+  return B;
+}
+
+// compute B_GS = inv(Lower) * (Lower - A)  where Lower = tril(A)
+function gaussSeidelIterationMatrix(A){
+  const n=A.length;
+  const L = getLowerTriangular(A);
+  // compute C = L - A
+  const C = Array.from({length:n}, ()=> new Array(n).fill(0));
+  for(let i=0;i<n;i++) for(let j=0;j<n;j++) C[i][j] = L[i][j] - A[i][j];
+  // Now solve L * X = C  for X (each column)
+  const X = Array.from({length:n}, ()=> new Array(n).fill(0));
+  // Solve for each column k
+  for(let k=0;k<n;k++){
+    // construct column vector c_k
+    const c_k = new Array(n);
+    for(let i=0;i<n;i++) c_k[i] = C[i][k];
+    const xcol = solveLower(L, c_k);
+    for(let i=0;i<n;i++) X[i][k] = xcol[i];
+  }
+  return X;
+}
+
+// compute SOR iteration matrix: B_sor = inv(D + wL) * ((1-w)D - wU)
+function sorIterationMatrix(A,w){
+  const n=A.length;
+  const D = Array.from({length:n}, ()=> new Array(n).fill(0));
+  const L = Array.from({length:n}, ()=> new Array(n).fill(0));
+  const U = Array.from({length:n}, ()=> new Array(n).fill(0));
+  for(let i=0;i<n;i++){
+    D[i][i] = A[i][i];
+    for(let j=0;j<i;j++) L[i][j] = -A[i][j]; // note sign consistent with formula below
+    for(let j=i+1;j<n;j++) U[i][j] = A[i][j];
+  }
+  // We'll build M1 = D + w*(-L) ??? To avoid sign confusion, use standard formula:
+  // Usually B_SOR = (D + wL)^{-1} * ((1-w)D - wU)
+  // Note: here L is strictly lower part of A (no sign).
+  // Build matrices accordingly:
+  const Lower = Array.from({length:n}, ()=> new Array(n).fill(0)); // D + w*L_strict
+  const L_strict = Array.from({length:n}, ()=> new Array(n).fill(0));
+  const U_strict = Array.from({length:n}, ()=> new Array(n).fill(0));
+  for(let i=0;i<n;i++){
+    Lower[i][i] = A[i][i];
+    for(let j=0;j<i;j++){ L_strict[i][j] = A[i][j]; Lower[i][j] = w * A[i][j]; }
+    for(let j=i+1;j<n;j++) U_strict[i][j] = A[i][j];
+  }
+  for(let i=0;i<n;i++) Lower[i][i] = A[i][i]; // ensure diag present (already)
+  // Build M_right = (1-w)D - w*U_strict
+  const Mright = Array.from({length:n}, ()=> new Array(n).fill(0));
+  for(let i=0;i<n;i++){
+    Mright[i][i] = (1-w)*A[i][i];
+    for(let j=i+1;j<n;j++) Mright[i][j] = -w * U_strict[i][j];
+  }
+  // Now compute B = inv(Lower) * Mright ; Lower is D + w*L_strict (we need to add diag into Lower)
+  for(let i=0;i<n;i++){
+    for(let j=0;j<i;j++){
+      Lower[i][j] = w * L_strict[i][j];
+    }
+    Lower[i][i] = A[i][i];
+  }
+  // Solve for each column of B: Lower * X_col = Mright_col
+  const B = Array.from({length:n}, ()=> new Array(n).fill(0));
+  for(let k=0;k<n;k++){
+    const col = new Array(n);
+    for(let i=0;i<n;i++) col[i] = Mright[i][k];
+    const sol = solveLower(Lower, col);
+    for(let i=0;i<n;i++) B[i][k] = sol[i];
+  }
+  return B;
+}
+
+// método de la potencia para estimar radio espectral (valor absoluto dominante)
+function spectralRadiusPowerMethod(B, maxIter=200, tol=1e-10){
+  const n = B.length;
+  // handle trivial
+  if(n===0) return 0;
+  // start with vector ones
+  let v = new Array(n).fill(1);
+  // normalize
+  let normv = norm2(v);
+  for(let i=0;i<n;i++) v[i] /= normv;
+  let lambda_old = 0;
+  for(let it=0; it<maxIter; it++){
+    const w = matVec(B, v);
+    const lambda = norm2(w);
+    if(lambda === 0) return 0;
+    // normalize
+    for(let i=0;i<n;i++) v[i] = w[i] / lambda;
+    if(Math.abs(lambda - lambda_old) < tol) return Math.abs(lambda);
+    lambda_old = lambda;
+  }
+  return Math.abs(lambda_old);
+}
+
+/* -------------- UI de cálculo y presentación -------------- */
+
+function prettyVec(v){
+  return '[' + v.map(x=>Number.isFinite(x)? (Math.round(x*1e8)/1e8).toString() : 'NaN').join(', ') + ']';
+}
+
+function tableLastRows(tab, maxRows=20){
+  const rows = tab.slice(-maxRows).map(r=> `<tr><td>${r[0]}</td><td>${prettyVec(r[1])}</td><td>${(r[2]).toExponential(3)}</td></tr>` ).join('');
+  return `<table><thead><tr><th>Iter</th><th>X</th><th>Error abs</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+computeBtn.addEventListener('click', ()=>{
+  try{
+    const tol = parseFloat(document.getElementById('tol').value);
+    const maxit = parseInt(document.getElementById('maxit').value);
+    const w = parseFloat(document.getElementById('omega').value);
+
+    const {n,A,b,x0} = readInputs();
+
+    // Validaciones
+    if(n <= 0) throw new Error('Tamaño inválido');
+    // run methods
+    const [x_jac, e_jac, t_jac] = jacobi(A,b,x0,tol,maxit);
+    const [x_gs, e_gs, t_gs] = gauss_seidel(A,b,x0,tol,maxit);
+    const [x_sor, e_sor, t_sor] = sor(A,b,x0,w,tol,maxit);
+
+    // iteration matrices
+    const BJ = jacobiIterationMatrix(A);
+    const BGS = gaussSeidelIterationMatrix(A);
+    const BSOR = sorIterationMatrix(A,w);
+
+    const rhoJ = spectralRadiusPowerMethod(BJ);
+    const rhoGS = spectralRadiusPowerMethod(BGS);
+    const rhoSOR = spectralRadiusPowerMethod(BSOR);
+
+    // prepare output summary (last error triple)
+    const last = (arr)=> arr.length? arr[arr.length-1] : [0,0,0];
+    const outHTML = `
+      <div><strong>Jacobi</strong> — solución: ${prettyVec(x_jac)}</div>
+      <div>Error final (abs): ${(last(e_jac)[0]).toExponential(3)}</div>
+      <div>Radio espectral (aprox): ${rhoJ.toFixed(6)} — Converge? ${rhoJ < 1 ? 'Sí' : 'No'}</div>
+      <hr>
+      <div><strong>Gauss–Seidel</strong> — solución: ${prettyVec(x_gs)}</div>
+      <div>Error final (abs): ${(last(e_gs)[0]).toExponential(3)}</div>
+      <div>Radio espectral (aprox): ${rhoGS.toFixed(6)} — Converge? ${rhoGS < 1 ? 'Sí' : 'No'}</div>
+      <hr>
+      <div><strong>SOR (ω=${w})</strong> — solución: ${prettyVec(x_sor)}</div>
+      <div>Error final (abs): ${(last(e_sor)[0]).toExponential(3)}</div>
+      <div>Radio espectral (aprox): ${rhoSOR.toFixed(6)} — Converge? ${rhoSOR < 1 ? 'Sí' : 'No'}</div>
+    `;
+    document.getElementById('output').innerHTML = outHTML;
+
+    // tables
+    const tablesDiv = document.getElementById('tables');
+    tablesDiv.innerHTML = `
+      <h4>Jacobi</h4>
+      ${tableLastRows(t_jac)}
+      <h4>Gauss–Seidel</h4>
+      ${tableLastRows(t_gs)}
+      <h4>SOR</h4>
+      ${tableLastRows(t_sor)}
+    `;
+
+    // store last result for download
+    window._lastIterativeResult = {
+      A: A, b: b, x0: x0,
+      jac: {sol:x_jac, errors: e_jac, tabla: t_jac, rho: rhoJ},
+      gs: {sol:x_gs, errors: e_gs, tabla: t_gs, rho: rhoGS},
+      sor: {sol:x_sor, errors: e_sor, tabla: t_sor, rho: rhoSOR, omega: w}
+    };
+
+  }catch(err){
+    alert('Error: ' + err.message);
+  }
+});
+
+downloadBtn.addEventListener('click', ()=>{
+  const r = window._lastIterativeResult;
+  if(!r) return alert('Primero calcula los métodos (Calcular).');
+  const lines = [];
+  lines.push('Informe — Métodos Iterativos');
+  lines.push('---------------------------');
+  lines.push('Matriz A:');
+  r.A.forEach(row => lines.push(row.join(' ')));
+  lines.push('Vector b: ' + r.b.join(' '));
+  lines.push('x0: ' + r.x0.join(' '));
+  lines.push('');
+  const pushMethod = (name, obj) => {
+    lines.push(`Método: ${name}`);
+    lines.push(`Omega (si aplica): ${obj.omega || ''}`);
+    lines.push('Solución encontrada: ' + obj.sol.join(' '));
+    const lastErr = obj.errors.length? obj.errors[obj.errors.length-1][0] : 0;
+    lines.push('Error final absoluto: ' + lastErr.toExponential(6));
+    lines.push('Radio espectral (aprox): ' + obj.rho.toFixed(8));
+    lines.push('Iteraciones: ' + obj.tabla.length);
+    lines.push('Últimas iteraciones (iteración, x, err_abs):');
+    obj.tabla.slice(-20).forEach(rw => lines.push(`${rw[0]} | ${rw[1].map(v=>v.toFixed(8)).join(' ')} | ${rw[2].toExponential(6)}`));
+    lines.push('');
+  };
+  pushMethod('Jacobi', r.jac);
+  pushMethod('Gauss–Seidel', r.gs);
+  pushMethod('SOR', r.sor);
+  const blob = new Blob([lines.join('\\n')], {type:'text/plain;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'informe_iterativos.txt'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+});
+
+resetBtn.addEventListener('click', ()=>{
+  nInput.value = 3; createMatrixInputs();
+  document.getElementById('output').textContent = 'Aún no se ha calculado.';
+  document.getElementById('tables').innerHTML = '';
+  window._lastIterativeResult = null;
+});
+
+// init
+createMatrixInputs();
+
+</script>
+</body>
+</html>
 
