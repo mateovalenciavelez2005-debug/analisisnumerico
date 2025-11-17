@@ -1,1 +1,551 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Soluciones numéricas de ecuaciones no lineales</title>
 
+<!-- Math.js para funciones y derivadas -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.js"></script>
+<!-- Chart.js para la gráfica -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+  body{
+    font-family: Arial, sans-serif;
+    margin: 20px;
+    max-width: 1100px;
+  }
+  h1{
+    margin-bottom: 5px;
+  }
+  .small{
+    font-size: 13px;
+    color: #555;
+  }
+  label{
+    font-weight: 600;
+  }
+  input, select{
+    padding: 5px;
+    margin: 3px 0;
+  }
+  button{
+    padding: 8px 12px;
+    margin: 6px 4px 6px 0;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    background: #2563eb;
+    color: white;
+  }
+  button.secondary{
+    background: #e5e5e5;
+    color: #111;
+  }
+  .row{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .col{
+    flex: 1;
+    min-width: 260px;
+  }
+  #tabla-iteraciones{
+    margin-top: 15px;
+    max-height: 350px;
+    overflow: auto;
+    border: 1px solid #ddd;
+    padding: 8px;
+    border-radius: 6px;
+  }
+  table{
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 12px;
+  }
+  th, td{
+    border: 1px solid #ddd;
+    padding: 4px;
+    text-align: center;
+  }
+  th{
+    background: #f3f3f3;
+  }
+  #resultado{
+    margin-top: 10px;
+    padding: 10px;
+    background: #f3f4ff;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+  canvas{
+    margin-top: 15px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Métodos Numéricos de Raíces</h1>
+<p class="small">
+  Puedes usar <code>x^2 - 4</code>, <code>x^3 - 2*x - 5</code>, <code>sin(x) - x/2</code>, etc.  
+  Math.js usa <code>^</code> para potencias (no <code>**</code>).
+</p>
+
+<div class="row">
+  <div class="col">
+    <h3>Datos de entrada</h3>
+
+    <label>f(x):</label><br>
+    <input id="fx" type="text" style="width: 100%;" value="x^3 - 2*x - 5"><br>
+
+    <label>g(x) (solo para Punto fijo):</label><br>
+    <input id="gx" type="text" style="width: 100%;" placeholder="Ej: (x^3 - 5)/2"><br>
+
+    <label>Método:</label><br>
+    <select id="metodo">
+      <option value="biseccion">Bisección</option>
+      <option value="regla_falsa">Regla falsa</option>
+      <option value="punto_fijo">Punto fijo</option>
+      <option value="newton">Newton</option>
+      <option value="secante">Secante</option>
+      <option value="newton_multiples">Newton (raíces múltiples)</option>
+    </select><br>
+
+    <label>Tolerancia:</label><br>
+    <input id="tol" type="number" step="any" value="1e-6"><br>
+
+    <label>Máx. iteraciones:</label><br>
+    <input id="max_iter" type="number" step="1" value="100"><br>
+
+    <label>Tipo de error:</label><br>
+    <select id="error_type">
+      <option value="abs">Error absoluto |x_n - x_{n-1}|</option>
+      <option value="rel">Error relativo |x_n - x_{n-1}| / |x_n|</option>
+      <option value="fx">Error en f(x_n) |f(x_n)|</option>
+    </select><br><br>
+
+    <h4>Parámetros según el método</h4>
+
+    <div class="small">
+      <b>Bisección / Regla falsa:</b> usar [a, b]<br>
+      <b>Punto fijo / Newton / Newton múltiple:</b> usar x0<br>
+      <b>Secante:</b> usar x0 y x1
+    </div>
+
+    <label>a:</label><br>
+    <input id="a" type="number" step="any" value="-2"><br>
+
+    <label>b:</label><br>
+    <input id="b" type="number" step="any" value="3"><br>
+
+    <label>x0:</label><br>
+    <input id="x0" type="number" step="any" value="2"><br>
+
+    <label>x1 (secante):</label><br>
+    <input id="x1" type="number" step="any" value="3"><br>
+
+    <br>
+    <button id="btnCalcular">Calcular</button>
+    <button id="btnEjemplo" class="secondary">Ejemplo rápido</button>
+  </div>
+
+  <div class="col">
+    <h3>Resultados</h3>
+    <div id="resultado">Sin cálculo todavía.</div>
+
+    <h3>Gráfica de f(x)</h3>
+    <canvas id="grafica" height="250"></canvas>
+  </div>
+</div>
+
+<h3>Tabla de iteraciones</h3>
+<div id="tabla-iteraciones"></div>
+
+<script>
+  // --------------------------
+  // Utilidades de funciones
+  // --------------------------
+  function crearFuncion(expr){
+    // math.js parsea la expresión y generamos f, f', f''
+    const x = math.parse('x');
+    const fNode = math.parse(expr);
+    const f = xval => {
+      try{
+        return fNode.evaluate({x: xval});
+      }catch(e){
+        return NaN;
+      }
+    };
+
+    const dfNode = math.derivative(fNode, 'x');
+    const df = xval => {
+      try{
+        return dfNode.evaluate({x: xval});
+      }catch(e){
+        return NaN;
+      }
+    };
+
+    const d2Node = math.derivative(dfNode, 'x');
+    const d2f = xval => {
+      try{
+        return d2Node.evaluate({x: xval});
+      }catch(e){
+        return NaN;
+      }
+    };
+
+    return { f, df, d2f, fNode, dfNode, d2Node };
+  }
+
+  function crearFuncionG(expr){
+    if(!expr || expr.trim()==='') return null;
+    const gNode = math.parse(expr);
+    const g = xval => {
+      try{
+        return gNode.evaluate({x: xval});
+      }catch(e){
+        return NaN;
+      }
+    };
+    return {g, gNode};
+  }
+
+  // --------------------------
+  // Cálculo del error
+  // --------------------------
+  function calcularError(errorType, nuevo, anterior, f_val){
+    if(errorType === 'fx' && f_val !== null && f_val !== undefined){
+      return Math.abs(f_val);
+    }
+    if(anterior === null || anterior === undefined){
+      return Math.abs(nuevo);
+    }
+    if(errorType === 'rel'){
+      const denom = Math.abs(nuevo) > 1e-15 ? Math.abs(nuevo) : 1e-15;
+      return Math.abs(nuevo - anterior) / denom;
+    }
+    // por defecto, absoluto
+    return Math.abs(nuevo - anterior);
+  }
+
+  // --------------------------
+  // Métodos numéricos
+  // --------------------------
+  function biseccion(f, a, b, tol, max_iter, errorType){
+    const tabla = [];
+    if(f(a)*f(b) > 0){
+      throw new Error("El intervalo no cumple f(a)*f(b) < 0");
+    }
+    let c_prev = null;
+    let c, fc;
+    for(let i=0;i<max_iter;i++){
+      c = (a + b) / 2;
+      fc = f(c);
+      const error = calcularError(errorType, c, c_prev, fc);
+      tabla.push([i+1, a, b, c, fc, error]);
+      if(error < tol) break;
+      if(f(a)*fc < 0){
+        b = c;
+      }else{
+        a = c;
+      }
+      c_prev = c;
+    }
+    return {raiz: c, tabla};
+  }
+
+  function reglaFalsa(f, a, b, tol, max_iter, errorType){
+    const tabla = [];
+    if(f(a)*f(b) > 0){
+      throw new Error("El intervalo no cumple f(a)*f(b) < 0");
+    }
+    let c_prev = null;
+    let c, fc;
+    for(let i=0;i<max_iter;i++){
+      const fa = f(a);
+      const fb = f(b);
+      c = b - fb*(b-a)/(fb-fa);
+      fc = f(c);
+      const error = calcularError(errorType, c, c_prev, fc);
+      tabla.push([i+1, a, b, c, fc, error]);
+      if(error < tol) break;
+      if(fa*fc < 0){
+        b = c;
+      }else{
+        a = c;
+      }
+      c_prev = c;
+    }
+    return {raiz: c, tabla};
+  }
+
+  function puntoFijo(g, x0, tol, max_iter, errorType){
+    const tabla = [];
+    let x = x0;
+    let x_prev = null;
+    for(let i=0;i<max_iter;i++){
+      const x_new = g(x);
+      const error = calcularError(errorType, x_new, x_prev, null);
+      tabla.push([i+1, x, x_new, error]);
+      if(error < tol) return {raiz: x_new, tabla};
+      x_prev = x_new;
+      x = x_new;
+    }
+    return {raiz: x, tabla};
+  }
+
+  function newton(f, df, x0, tol, max_iter, errorType){
+    const tabla = [];
+    let x = x0;
+    let x_prev = null;
+    for(let i=0;i<max_iter;i++){
+      const dfx = df(x);
+      if(dfx === 0 || !isFinite(dfx)){
+        throw new Error("Derivada cero o inválida. No se puede continuar.");
+      }
+      const x_new = x - f(x)/dfx;
+      const err = calcularError(errorType, x_new, x_prev, f(x_new));
+      tabla.push([i+1, x, x_new, err]);
+      if(err < tol) return {raiz: x_new, tabla};
+      x_prev = x_new;
+      x = x_new;
+    }
+    return {raiz: x, tabla};
+  }
+
+  function secante(f, x0, x1, tol, max_iter, errorType){
+    const tabla = [];
+    let prev = null;
+    let x_prev = x0;
+    let x = x1;
+    for(let i=0;i<max_iter;i++){
+      const fx0 = f(x_prev);
+      const fx1 = f(x);
+      if((fx1 - fx0) === 0){
+        throw new Error("División por cero en secante.");
+      }
+      const x_new = x - fx1*(x - x_prev)/(fx1 - fx0);
+      const err = calcularError(errorType, x_new, prev, f(x_new));
+      tabla.push([i+1, x_prev, x, x_new, err]);
+      if(err < tol) return {raiz: x_new, tabla};
+      prev = x_new;
+      x_prev = x;
+      x = x_new;
+    }
+    return {raiz: x, tabla};
+  }
+
+  function newtonRaicesMultiples(f, df, d2f, x0, tol, max_iter, errorType){
+    const tabla = [];
+    let x = x0;
+    let x_prev = null;
+    for(let i=0;i<max_iter;i++){
+      const fx = f(x);
+      const dfx = df(x);
+      const d2fx = d2f(x);
+      const denom = dfx*dfx - fx*d2fx;
+      if(denom === 0){
+        throw new Error("División por cero (raíz múltiple).");
+      }
+      const x_new = x - (fx*dfx)/denom;
+      const err = calcularError(errorType, x_new, x_prev, f(x_new));
+      tabla.push([i+1, x, x_new, err]);
+      if(err < tol) return {raiz: x_new, tabla};
+      x_prev = x_new;
+      x = x_new;
+    }
+    return {raiz: x, tabla};
+  }
+
+  // --------------------------
+  // Tabla de iteraciones
+  // --------------------------
+  function renderTabla(metodo, tabla){
+    const cont = document.getElementById('tabla-iteraciones');
+    if(!tabla || tabla.length === 0){
+      cont.innerHTML = "No hay iteraciones.";
+      return;
+    }
+    let headers;
+    if(metodo === 'Bisección' || metodo === 'Regla falsa'){
+      headers = ["Iter", "a", "b", "c", "f(c)", "Error"];
+    }else if(metodo === 'Newton' || metodo === 'Newton (raíces múltiples)' || metodo === 'Punto fijo'){
+      headers = ["Iter", "x_n", "x_{n+1}", "Error"];
+    }else if(metodo === 'Secante'){
+      headers = ["Iter", "x_{n-1}", "x_n", "x_{n+1}", "Error"];
+    }else{
+      headers = ["Iter", "Dato1", "Dato2", "Dato3", "Error"];
+    }
+
+    let html = "<table><thead><tr>";
+    headers.forEach(h => html += `<th>${h}</th>`);
+    html += "</tr></thead><tbody>";
+    tabla.forEach(fila => {
+      html += "<tr>";
+      fila.forEach(v => {
+        const val = (typeof v === "number") ? v.toPrecision(6) : v;
+        html += `<td>${val}</td>`;
+      });
+      html += "</tr>";
+    });
+    html += "</tbody></table>";
+    cont.innerHTML = html;
+  }
+
+  // --------------------------
+  // Gráfica con Chart.js
+  // --------------------------
+  let chart = null;
+  function graficar(f, raiz, a, b, x0){
+    let xmin, xmax;
+    if(a !== null && b !== null){
+      xmin = a;
+      xmax = b;
+    }else if(x0 !== null && x0 !== undefined){
+      xmin = x0 - 5;
+      xmax = x0 + 5;
+    }else{
+      xmin = -5;
+      xmax = 5;
+    }
+    if(xmin === xmax){
+      xmin -= 1; xmax += 1;
+    }
+
+    const N = 200;
+    const xs = [];
+    const ys = [];
+    const step = (xmax - xmin) / (N-1);
+    for(let i=0;i<N;i++){
+      const xv = xmin + i*step;
+      xs.push(xv);
+      ys.push(f(xv));
+    }
+
+    const ctx = document.getElementById('grafica').getContext('2d');
+    if(chart) chart.destroy();
+    chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: xs,
+        datasets: [
+          {
+            label: 'f(x)',
+            data: ys,
+            pointRadius: 0,
+            borderWidth: 1
+          },
+          ...(raiz !== null && raiz !== undefined ? [{
+            label: 'Raíz aproximada',
+            data: xs.map(xv => (Math.abs(xv - raiz) < step/2 ? f(raiz) : null)),
+            pointRadius: 4,
+            showLine: false,
+            borderWidth: 0
+          }] : [])
+        ]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: { title: { display: true, text: 'x' } },
+          y: { title: { display: true, text: 'f(x)' } }
+        }
+      }
+    });
+  }
+
+  // --------------------------
+  // Lógica de interacción
+  // --------------------------
+  document.getElementById('btnEjemplo').addEventListener('click', () => {
+    document.getElementById('fx').value = "x^3 - 2*x - 5";
+    document.getElementById('a').value = "-2";
+    document.getElementById('b').value = "3";
+    document.getElementById('x0').value = "2";
+    document.getElementById('x1').value = "3";
+    document.getElementById('metodo').value = "biseccion";
+    document.getElementById('tol').value = "1e-6";
+    document.getElementById('max_iter').value = "100";
+    document.getElementById('error_type').value = "abs";
+  });
+
+  document.getElementById('btnCalcular').addEventListener('click', () => {
+    const fxStr = document.getElementById('fx').value.trim();
+    const gxStr = document.getElementById('gx').value.trim();
+    const metodoVal = document.getElementById('metodo').value;
+    const tol = parseFloat(document.getElementById('tol').value);
+    const max_iter = parseInt(document.getElementById('max_iter').value, 10);
+    const errorType = document.getElementById('error_type').value;
+
+    const a = parseFloat(document.getElementById('a').value);
+    const b = parseFloat(document.getElementById('b').value);
+    const x0 = parseFloat(document.getElementById('x0').value);
+    const x1 = parseFloat(document.getElementById('x1').value);
+
+    const salida = document.getElementById('resultado');
+    let metodoNombre = "";
+    let res = null;
+
+    try{
+      const {f, df, d2f} = crearFuncion(fxStr);
+      let gFun = null;
+      if(gxStr){
+        const resG = crearFuncionG(gxStr);
+        if(resG){
+          gFun = resG.g;
+        }
+      }
+
+      if(metodoVal === 'biseccion'){
+        metodoNombre = "Bisección";
+        res = biseccion(f, a, b, tol, max_iter, errorType);
+        graficar(f, res.raiz, a, b, null);
+      }else if(metodoVal === 'regla_falsa'){
+        metodoNombre = "Regla falsa";
+        res = reglaFalsa(f, a, b, tol, max_iter, errorType);
+        graficar(f, res.raiz, a, b, null);
+      }else if(metodoVal === 'punto_fijo'){
+        if(!gFun) throw new Error("Debes proporcionar g(x) para el método de punto fijo.");
+        metodoNombre = "Punto fijo";
+        res = puntoFijo(gFun, x0, tol, max_iter, errorType);
+        graficar(f, res.raiz, null, null, x0);
+      }else if(metodoVal === 'newton'){
+        metodoNombre = "Newton";
+        res = newton(f, df, x0, tol, max_iter, errorType);
+        graficar(f, res.raiz, null, null, x0);
+      }else if(metodoVal === 'secante'){
+        metodoNombre = "Secante";
+        res = secante(f, x0, x1, tol, max_iter, errorType);
+        graficar(f, res.raiz, null, null, x0);
+      }else if(metodoVal === 'newton_multiples'){
+        metodoNombre = "Newton (raíces múltiples)";
+        res = newtonRaicesMultiples(f, df, d2f, x0, tol, max_iter, errorType);
+        graficar(f, res.raiz, null, null, x0);
+      }
+
+      if(res && res.tabla && res.tabla.length > 0){
+        const iters = res.tabla.length;
+        const ultimoError = res.tabla[res.tabla.length - 1].slice(-1)[0];
+        salida.innerHTML = `
+          <b>Método:</b> ${metodoNombre}<br>
+          <b>Raíz aproximada:</b> ${res.raiz.toPrecision(10)}<br>
+          <b>Iteraciones:</b> ${iters}<br>
+          <b>Último error:</b> ${ultimoError.toExponential(3)}
+        `;
+        renderTabla(metodoNombre, res.tabla);
+      }else{
+        salida.textContent = "No se generaron iteraciones.";
+        document.getElementById('tabla-iteraciones').innerHTML = "";
+      }
+
+    }catch(e){
+      salida.textContent = "Error: " + e.message;
+      document.getElementById('tabla-iteraciones').innerHTML = "";
+    }
+  });
+
+</script>
+</body>
+</html>
