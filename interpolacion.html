@@ -4,28 +4,76 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Interpolación (Vandermonde / Newton / Lagrange / Splines)</title>
+  <!-- Librería para las gráficas -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
   <style>
-    body{font-family:system-ui,Segoe UI,Roboto,Arial;max-width:1100px;margin:20px auto;padding:0 16px;color:#111}
+    /* Estilos generales de la página */
+    body{
+      font-family:system-ui,Segoe UI,Roboto,Arial;
+      max-width:1100px;
+      margin:20px auto;
+      padding:0 16px;
+      color:#111
+    }
     h1{font-size:20px;margin-bottom:6px}
     .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
     label{font-weight:600}
-    input[type=number], input[type=text]{padding:6px;border:1px solid #ccc;border-radius:6px}
+    input[type=number], input[type=text]{
+      padding:6px;
+      border:1px solid #ccc;
+      border-radius:6px
+    }
     table{border-collapse:collapse;margin-top:8px}
     td,th{padding:6px;border:1px solid #ddd}
-    button{padding:8px 12px;border:none;border-radius:8px;background:#2563eb;color:white;cursor:pointer}
+    button{
+      padding:8px 12px;
+      border:none;
+      border-radius:8px;
+      background:#2563eb;
+      color:white;
+      cursor:pointer
+    }
     button.ghost{background:#eee;color:#111}
-    pre.pol{background:#f5f5f5;padding:10px;border-radius:6px;overflow:auto}
-    .controls{margin:12px 0;display:flex;gap:8px;flex-wrap:wrap; align-items:center; background: #f8fafc; padding: 10px; border-radius: 8px;}
+    pre.pol{
+      background:#f5f5f5;
+      padding:10px;
+      border-radius:6px;
+      overflow:auto
+    }
+    .controls{
+      margin:12px 0;
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      align-items:center;
+      background:#f8fafc;
+      padding:10px;
+      border-radius:8px;
+    }
     .legend{margin-top:10px}
-    .eval-box { border-left: 4px solid #2563eb; padding-left: 10px; margin: 10px 0; background: #f0f9ff; padding: 10px; border-radius: 4px; }
-    .eval-result-item { display: flex; justify-content: space-between; margin-bottom: 4px; font-family: monospace; font-size: 14px; }
+    .eval-box{
+      border-left:4px solid #2563eb;
+      padding-left:10px;
+      margin:10px 0;
+      background:#f0f9ff;
+      padding:10px;
+      border-radius:4px;
+    }
+    .eval-result-item{
+      display:flex;
+      justify-content:space-between;
+      margin-bottom:4px;
+      font-family:monospace;
+      font-size:14px;
+    }
   </style>
 </head>
 <body>
   <h1>Interpolación — Vandermonde · Newton · Lagrange · Spline lineal · Spline cúbico</h1>
   <p>Sube hasta 8 puntos (x,y). La página calculará los polinomios, los errores (versus Lagrange) y mostrará las curvas.</p>
 
+  <!-- Controles para definir número de puntos y generar la tabla -->
   <div class="row">
     <label for="npoints">Número de puntos (1-8):</label>
     <input id="npoints" type="number" min="1" max="8" value="4">
@@ -33,8 +81,10 @@
     <button id="fillExample" class="ghost">Ejemplo</button>
   </div>
 
+  <!-- Aquí se inserta dinámicamente la tabla de puntos -->
   <div id="tableContainer"></div>
 
+  <!-- Bloque de botones principales y evaluación puntual -->
   <div class="controls">
     <button id="compute">Calcular y Graficar</button>
     
@@ -48,6 +98,7 @@
     <button id="reset" class="ghost">Reset</button>
   </div>
 
+  <!-- Zona izquierda: gráfica. Derecha: resultados numéricos -->
   <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;">
     <div style="flex:1;min-width:320px;">
       <canvas id="chart" height="360"></canvas>
@@ -74,23 +125,49 @@
   </div>
 
 <script>
-function linspace(a,b,n){const r=[];if(n===1){r.push((a+b)/2);return r;}for(let i=0;i<n;i++)r.push(a + (b-a)*i/(n-1));return r}
+/* Genera n puntos equiespaciados entre a y b */
+function linspace(a,b,n){
+  const r=[];
+  if(n===1){
+    r.push((a+b)/2);
+    return r;
+  }
+  for(let i=0;i<n;i++) r.push(a + (b-a)*i/(n-1));
+  return r;
+}
 
+/* Resolución de sistema lineal Ax = b mediante eliminación gaussiana con pivoteo parcial */
 function solveLinearSystem(A, b){ 
   const n = A.length;
-  const M = A.map(r=>r.slice());
-  const B = b.slice();
+  const M = A.map(r=>r.slice()); // copia de A
+  const B = b.slice();           // copia de b
+
+  // Fase de eliminación
   for(let k=0;k<n;k++){
-    let i_max=k; let maxv=Math.abs(M[k][k]);
-    for(let i=k+1;i<n;i++){ if(Math.abs(M[i][k])>maxv){ maxv=Math.abs(M[i][k]); i_max=i; }}
+    // selección de pivote
+    let i_max=k; 
+    let maxv=Math.abs(M[k][k]);
+    for(let i=k+1;i<n;i++){
+      if(Math.abs(M[i][k])>maxv){ 
+        maxv=Math.abs(M[i][k]); 
+        i_max=i; 
+      }
+    }
     if(maxv===0) throw new Error('Matriz singular');
-    if(i_max!==k){ [M[k],M[i_max]]=[M[i_max],M[k]]; [B[k],B[i_max]]=[B[i_max],B[k]]; }
+    // intercambio de filas si hace falta
+    if(i_max!==k){ 
+      [M[k],M[i_max]]=[M[i_max],M[k]]; 
+      [B[k],B[i_max]]=[B[i_max],B[k]]; 
+    }
+    // eliminación hacia abajo
     for(let i=k+1;i<n;i++){
       const f = M[i][k]/M[k][k];
       for(let j=k;j<n;j++) M[i][j] -= f*M[k][j];
       B[i] -= f*B[k];
     }
   }
+
+  // Sustitución regresiva
   const x = new Array(n).fill(0);
   for(let i=n-1;i>=0;i--){
     let s=B[i];
@@ -100,21 +177,29 @@ function solveLinearSystem(A, b){
   return x;
 }
 
+/* Construcción de la matriz de Vandermonde y obtención de los coeficientes */
 function vandermondeCoefficients(x, y){
   const n = x.length;
   const V = new Array(n).fill(0).map(()=>new Array(n).fill(0));
-  for(let i=0;i<n;i++) for(let j=0;j<n;j++) V[i][j] = Math.pow(x[i], j);
+  for(let i=0;i<n;i++) 
+    for(let j=0;j<n;j++) 
+      V[i][j] = Math.pow(x[i], j);
   return solveLinearSystem(V, Array.from(y));
 }
 
+/* Evaluación de un polinomio dado por sus coeficientes usando Horner */
 function polyval(coeffs, z){
   if(Array.isArray(z)) return z.map(t=>polyval(coeffs,t));
-  let s=0; for(let i=coeffs.length-1;i>=0;i--) s = s*z + coeffs[i]; return s;
+  let s=0; 
+  for(let i=coeffs.length-1;i>=0;i--) 
+    s = s*z + coeffs[i]; 
+  return s;
 }
 
+/* Tabla de diferencias divididas de Newton (forma incremental) */
 function newtonDividedDifferences(x, y){
   const n = x.length;
-  const coef = y.slice();
+  const coef = y.slice();  // se trabaja sobre una copia
   for(let j=1;j<n;j++){
     for(let i=n-1;i>=j;i--){
       coef[i] = (coef[i] - coef[i-1]) / (x[i] - x[i-j]);
@@ -123,78 +208,131 @@ function newtonDividedDifferences(x, y){
   return coef;
 }
 
+/* Evaluación del polinomio de Newton en un punto o arreglo z */
 function evalNewton(coef, xdata, z){
   if(Array.isArray(z)) return z.map(t=>evalNewton(coef,xdata,t));
-  let n = coef.length; let res = coef[n-1];
-  for(let i=n-2;i>=0;i--) res = res*(z - xdata[i]) + coef[i];
+  let n = coef.length; 
+  let res = coef[n-1];
+  for(let i=n-2;i>=0;i--) 
+    res = res*(z - xdata[i]) + coef[i];
   return res;
 }
 
+/* Evaluación directa del polinomio de Lagrange */
 function evalLagrange(xdata, ydata, z){
   if(Array.isArray(z)) return z.map(t=>evalLagrange(xdata,ydata,t));
-  const n = xdata.length; let s=0;
+  const n = xdata.length; 
+  let s=0;
   for(let i=0;i<n;i++){
     let Li=1;
-    for(let j=0;j<n;j++) if(j!==i) Li *= (z - xdata[j])/(xdata[i]-xdata[j]);
+    for(let j=0;j<n;j++) 
+      if(j!==i) 
+        Li *= (z - xdata[j])/(xdata[i]-xdata[j]);
     s += ydata[i]*Li;
   }
   return s;
 }
 
+/* Interpolación por spline lineal: interpolación a trozos entre puntos consecutivos */
 function evalLinearSpline(xdata, ydata, z){
   if(Array.isArray(z)) return z.map(t=>evalLinearSpline(xdata,ydata,t));
-  const n = xdata.length; if(z <= xdata[0]){
-    const t = (z - xdata[0])/(xdata[1]-xdata[0]); return ydata[0] + t*(ydata[1]-ydata[0]);
+  const n = xdata.length; 
+
+  // extrapolación por los extremos usando la recta del primer/último intervalo
+  if(z <= xdata[0]){
+    const t = (z - xdata[0])/(xdata[1]-xdata[0]); 
+    return ydata[0] + t*(ydata[1]-ydata[0]);
   }
   if(z >= xdata[n-1]){
-    const t = (z - xdata[n-2])/(xdata[n-1]-xdata[n-2]); return ydata[n-2] + t*(ydata[n-1]-ydata[n-2]);
+    const t = (z - xdata[n-2])/(xdata[n-1]-xdata[n-2]); 
+    return ydata[n-2] + t*(ydata[n-1]-ydata[n-2]);
   }
-  let i = 0; while(!(z>=xdata[i] && z<=xdata[i+1])) i++;
+
+  // búsqueda del intervalo [x_i, x_{i+1}] que contiene a z
+  let i = 0; 
+  while(!(z>=xdata[i] && z<=xdata[i+1])) i++;
   const t = (z - xdata[i])/(xdata[i+1]-xdata[i]);
   return ydata[i] + t*(ydata[i+1]-ydata[i]);
 }
 
+/* Cálculo de los coeficientes de un spline cúbico natural (condiciones de extremos con segunda derivada 0) */
 function naturalCubicSplineCoeffs(x, y){
   const n = x.length;
-  if(n<=2) return {x:x,y:y,m:new Array(n).fill(0)};
-  const h = new Array(n-1); for(let i=0;i<n-1;i++) h[i]=x[i+1]-x[i];
+  if(n<=2) return {x:x,y:y,m:new Array(n).fill(0)}; // con 2 puntos no hay curvatura
+
+  // pasos h_i
+  const h = new Array(n-1); 
+  for(let i=0;i<n-1;i++) h[i]=x[i+1]-x[i];
+
+  // vector alpha de la formulación clásica del spline cúbico
   const alpha = new Array(n).fill(0);
-  for(let i=1;i<n-1;i++) alpha[i] = (3/h[i])*(y[i+1]-y[i]) - (3/h[i-1])*(y[i]-y[i-1]);
-  const l = new Array(n); const mu = new Array(n); const z = new Array(n);
+  for(let i=1;i<n-1;i++) 
+    alpha[i] = (3/h[i])*(y[i+1]-y[i]) - (3/h[i-1])*(y[i]-y[i-1]);
+
+  // resolución del sistema tridiagonal (método de Thomas)
+  const l = new Array(n); 
+  const mu = new Array(n); 
+  const z = new Array(n);
   l[0]=1; mu[0]=0; z[0]=0;
   for(let i=1;i<n-1;i++){
     l[i] = 2*(x[i+1]-x[i-1]) - h[i-1]*mu[i-1];
     mu[i] = h[i]/l[i];
     z[i] = (alpha[i] - h[i-1]*z[i-1]) / l[i];
   }
-  l[n-1]=1; z[n-1]=0; const m = new Array(n).fill(0);
+  l[n-1]=1; 
+  z[n-1]=0; 
+  const m = new Array(n).fill(0); // m = segundas derivadas en los nodos
+
   for(let j=n-2;j>=0;j--){
     m[j] = z[j] - mu[j]*m[j+1];
   }
   return {x:x,y:y,m:m,h:h};
 }
 
+/* Evaluación del spline cúbico natural en un punto z */
 function evalCubicSpline(spline, z){
-  const x = spline.x; const y = spline.y; const m = spline.m; const h = spline.h; const n = x.length;
+  const x = spline.x; 
+  const y = spline.y; 
+  const m = spline.m; 
+  const h = spline.h; 
+  const n = x.length;
+
   if(Array.isArray(z)) return z.map(t=>evalCubicSpline(spline,t));
+
+  // extrapolación lineal en los extremos
   if(z <= x[0]){
-    const t=(z-x[0])/(x[1]-x[0]); return y[0] + t*(y[1]-y[0]);
+    const t=(z-x[0])/(x[1]-x[0]); 
+    return y[0] + t*(y[1]-y[0]);
   }
   if(z >= x[n-1]){
-    const t=(z-x[n-2])/(x[n-1]-x[n-2]); return y[n-2] + t*(y[n-1]-y[n-2]);
+    const t=(z-x[n-2])/(x[n-1]-x[n-2]); 
+    return y[n-2] + t*(y[n-1]-y[n-2]);
   }
-  let i=0; while(!(z>=x[i] && z<=x[i+1])) i++;
+
+  // localización del intervalo correspondiente
+  let i=0; 
+  while(!(z>=x[i] && z<=x[i+1])) i++;
   const xi = x[i], xi1 = x[i+1], hi = h[i];
   const A = (xi1 - z)/hi;
   const B = (z - xi)/hi;
-  const S = A*y[i] + B*y[i+1] + ((A*A*A - A)*m[i] + (B*B*B - B)*m[i+1])*(hi*hi)/6.0;
+
+  // fórmula del spline cúbico natural en forma de combinación de y y m
+  const S = A*y[i] + B*y[i+1] +
+            ((A*A*A - A)*m[i] + (B*B*B - B)*m[i+1])*(hi*hi)/6.0;
   return S;
 }
 
+/* Norma L2 entre dos vectores: se usa para comparar métodos con Lagrange */
 function l2norm(fa, fb){
-  let s=0; for(let i=0;i<fa.length;i++){ const d=fa[i]-fb[i]; s+=d*d; } return Math.sqrt(s);
+  let s=0; 
+  for(let i=0;i<fa.length;i++){ 
+    const d=fa[i]-fb[i]; 
+    s+=d*d; 
+  } 
+  return Math.sqrt(s);
 }
 
+/* Referencias a elementos del DOM */
 const tableContainer = document.getElementById('tableContainer');
 const npointsInput = document.getElementById('npoints');
 const createTableBtn = document.getElementById('createTable');
@@ -202,10 +340,11 @@ const fillExampleBtn = document.getElementById('fillExample');
 const computeBtn = document.getElementById('compute');
 const downloadBtn = document.getElementById('downloadReport');
 const resetBtn = document.getElementById('reset');
-const evalXInput = document.getElementById('evalX'); // Nuevo input
-let chart = null;
-let lastResult = null;
+const evalXInput = document.getElementById('evalX'); // campo para evaluar en un X concreto
+let chart = null;      // instancia de Chart.js
+let lastResult = null; // se guarda el último cálculo para generar el informe
 
+/* Crea la tabla de entrada de puntos (x,y) según el número indicado */
 function createTable(){
   const n = Math.max(1, Math.min(8, parseInt(npointsInput.value)||4));
   npointsInput.value = n;
@@ -217,31 +356,41 @@ function createTable(){
   tableContainer.innerHTML = html;
 }
 
+/* Eventos para crear tabla y cargar un ejemplo con sen(x) */
 createTableBtn.addEventListener('click', ()=>createTable());
 fillExampleBtn.addEventListener('click', ()=>{
-  npointsInput.value=6; createTable();
-  const xs=[0,1,2,3,4,5]; const ys=xs.map(t=>Math.sin(t));
+  npointsInput.value=6; 
+  createTable();
+  const xs=[0,1,2,3,4,5]; 
+  const ys=xs.map(t=>Math.sin(t));
   xs.forEach((v,i)=> document.getElementById('x'+i).value = v);
   ys.forEach((v,i)=> document.getElementById('y'+i).value = v.toFixed(6));
 });
 
+/* Lee los puntos de la tabla, los ordena por x y devuelve dos arreglos [x[], y[]] */
 function readPoints(){
   const n = parseInt(npointsInput.value);
-  const xs=[]; const ys=[];
+  const xs=[]; 
+  const ys=[];
   for(let i=0;i<n;i++){
     const xi = parseFloat(document.getElementById('x'+i).value);
     const yi = parseFloat(document.getElementById('y'+i).value);
-    if(Number.isNaN(xi) || Number.isNaN(yi)) throw new Error('Valores inválidos en la tabla');
-    xs.push(xi); ys.push(yi);
+    if(Number.isNaN(xi) || Number.isNaN(yi)) 
+      throw new Error('Valores inválidos en la tabla');
+    xs.push(xi); 
+    ys.push(yi);
   }
+  // se empareja y ordena por x para que los splines funcionen bien
   const paired = xs.map((v,i)=>({x:v,y:ys[i]})).sort((a,b)=>a.x-b.x);
   return [paired.map(p=>p.x), paired.map(p=>p.y)];
 }
 
+/* Convierte un arreglo de coeficientes en una cadena tipo a0 + a1·x + a2·x^2 ... */
 function polyToString(coeffs){
   const terms = [];
   for(let i=coeffs.length-1;i>=0;i--){
-    const c = coeffs[i]; if(Math.abs(c) < 1e-12) continue;
+    const c = coeffs[i]; 
+    if(Math.abs(c) < 1e-12) continue; // se omiten coeficientes casi cero
     const rounded = Math.round(c*1e8)/1e8;
     let s = (i===0)? `${rounded}` : (i===1? `${rounded}·x` : `${rounded}·x^${i}`);
     terms.push(s);
@@ -249,15 +398,18 @@ function polyToString(coeffs){
   return terms.length? terms.join(' + ').replace(/\+ -/g,'- ') : '0';
 }
 
+/* Convierte la forma de Newton (con diferencias divididas) a coeficientes de un polinomio estándar */
 function newtonToPolynomialString(coef, xdata){
-  const n = coef.length; let poly = [0];
+  const n = coef.length; 
+  let poly = [0];
   for(let i=0;i<n;i++){
     let term = [coef[i]];
+    // se multiplica sucesivamente por (x - x_k)
     for(let k=0;k<i;k++){
       const nk = new Array(term.length+1).fill(0);
       for(let j=0;j<term.length;j++){
         nk[j+1] += term[j];
-        nk[j] += -term[j]*xdata[k];
+        nk[j]   += -term[j]*xdata[k];
       }
       term = nk;
     }
@@ -267,6 +419,7 @@ function newtonToPolynomialString(coef, xdata){
   return polyToString(poly);
 }
 
+/* Genera el texto del informe de interpolación para descargarlo como .txt */
 function generateReportText(result){
   const lines = [];
   lines.push('Informe de interpolación');
@@ -274,11 +427,13 @@ function generateReportText(result){
   lines.push('Puntos (x,y):');
   result.x.forEach((xi,i)=> lines.push(`${i}: x=${xi}, y=${result.y[i]}`));
   lines.push('\nErrores (L2 vs Lagrange):');
-  for(const k of Object.keys(result.errors)) lines.push(`${k}: ${result.errors[k].toExponential(4)}`);
+  for(const k of Object.keys(result.errors)) 
+    lines.push(`${k}: ${result.errors[k].toExponential(4)}`);
   
   if(result.evalPoint !== null) {
       lines.push(`\nEvaluación puntual en X = ${result.evalPoint}:`);
-      for(const k of Object.keys(result.evalVals)) lines.push(`${k}: ${result.evalVals[k]}`);
+      for(const k of Object.keys(result.evalVals)) 
+        lines.push(`${k}: ${result.evalVals[k]}`);
   }
 
   lines.push('\nMejor método: ' + result.best);
@@ -289,23 +444,28 @@ function generateReportText(result){
   return lines.join('\n');
 }
 
+/* Botón principal: calcula todos los métodos y actualiza la interfaz */
 computeBtn.addEventListener('click', ()=>{
   try{
     const [x, y] = readPoints();
     if(x.length < 2) throw new Error('Se necesitan al menos 2 puntos');
     
-    // Construcción de polinomios
+    // Construcción de polinomios y funciones de evaluación
     const coef_vand = vandermondeCoefficients(x,y);
     const f_vand = (z)=> polyval(coef_vand, z);
+
     const coef_newt = newtonDividedDifferences(x,y);
     const f_newt = (z)=> evalNewton(coef_newt, x, z);
+
     const f_lagr = (z)=> evalLagrange(x,y,z);
+
     const splineLin = {eval: (z)=> evalLinearSpline(x,y,z)};
     const splineCubObj = naturalCubicSplineCoeffs(x,y);
     const splineCub = {spline: splineCubObj, eval: (z)=> evalCubicSpline(splineCubObj,z)};
 
-    // Datos para gráfica
-    const xmin = Math.min(...x); const xmax = Math.max(...x);
+    // Malla para graficar
+    const xmin = Math.min(...x); 
+    const xmax = Math.max(...x);
     const range = xmax - xmin;
     const xsample = linspace(xmin - range*0.1, xmax + range*0.1, 300);
 
@@ -317,25 +477,27 @@ computeBtn.addEventListener('click', ()=>{
       'Spline cúbico': xsample.map(t=>splineCub.eval(t)),
     };
 
-    // Cálculo de Errores
+    // Cálculo de errores L2 tomando Lagrange como referencia
     const xerr = linspace(xmin, xmax, 150);
     const ref = xerr.map(t=>f_lagr(t));
     const errors = {};
     for(const k of Object.keys(vals)){
-      const arr = (k==='Lagrange')? ref : (k==='Vandermonde'? xsample.map(t=>f_vand(t)).slice(0,150) : (k==='Newton'? xsample.map(t=>f_newt(t)).slice(0,150) : (k==='Spline lineal'? xsample.map(t=>splineLin.eval(t)).slice(0,150) : xsample.map(t=>splineCub.eval(t)).slice(0,150))));
       let arrErr = xerr.map(t => {
         if(k==='Vandermonde') return f_vand(t);
-        if(k==='Newton') return f_newt(t);
-        if(k==='Lagrange') return f_lagr(t);
+        if(k==='Newton')     return f_newt(t);
+        if(k==='Lagrange')   return f_lagr(t);
         if(k==='Spline lineal') return splineLin.eval(t);
         if(k==='Spline cúbico') return splineCub.eval(t);
       });
       errors[k] = l2norm(ref, arrErr);
     }
 
-    const best = Object.keys(errors).reduce((a,b)=> errors[a] <= errors[b]? a : b);
+    // Método con menor error L2
+    const best = Object.keys(errors).reduce((a,b)=> 
+      errors[a] <= errors[b]? a : b
+    );
 
-    // ====== NUEVA LÓGICA: EVALUACIÓN PUNTUAL (X=4, etc) ======
+    // ---- Evaluación puntual en un X proporcionado por el usuario ----
     const evalValRaw = evalXInput.value;
     let evalVals = null;
     let evalPoint = null;
@@ -346,10 +508,11 @@ computeBtn.addEventListener('click', ()=>{
             evalPoint = valX;
             document.getElementById('xValDisplay').textContent = valX;
             
+            // se evalúa cada método en ese valor de X
             evalVals = {
                 'Vandermonde': f_vand(valX),
-                'Newton': f_newt(valX),
-                'Lagrange': f_lagr(valX),
+                'Newton':      f_newt(valX),
+                'Lagrange':    f_lagr(valX),
                 'Spline lineal': splineLin.eval(valX),
                 'Spline cúbico': splineCub.eval(valX)
             };
@@ -364,18 +527,22 @@ computeBtn.addEventListener('click', ()=>{
         document.getElementById('xValDisplay').textContent = "?";
         document.getElementById('evalOutput').innerHTML = '<em>Ingresa un valor en "Evaluar en X" y calcula.</em>';
     }
-    // ==========================================================
+    // -----------------------------------------------------------------
 
+    // Actualización de las expresiones mostradas
     document.getElementById('vandermondePoly').textContent = 'Vandermonde: ' + polyToString(coef_vand);
-    document.getElementById('newtonPoly').textContent = 'Newton: ' + newtonToPolynomialString(coef_newt, x);
-    document.getElementById('lagrangePoly').textContent = 'Lagrange: (evaluación directa)';
-    document.getElementById('splineLin').textContent = 'Spline lineal: (segmentos lineales)';
-    document.getElementById('splineCub').textContent = 'Spline cúbico: (segmented natural cubic)';
+    document.getElementById('newtonPoly').textContent      = 'Newton: ' + newtonToPolynomialString(coef_newt, x);
+    document.getElementById('lagrangePoly').textContent    = 'Lagrange: (evaluación directa)';
+    document.getElementById('splineLin').textContent       = 'Spline lineal: (segmentos lineales)';
+    document.getElementById('splineCub').textContent       = 'Spline cúbico: (segmented natural cubic)';
 
+    // Bloque de errores
     let errHtml = '';
-    for(const k of Object.keys(errors)) errHtml += `<div><strong>${k}</strong>: ${errors[k].toExponential(4)}</div>`;
+    for(const k of Object.keys(errors)) 
+      errHtml += `<div><strong>${k}</strong>: ${errors[k].toExponential(4)}</div>`;
     document.getElementById('errors').innerHTML = errHtml;
 
+    // Se guarda el resultado completo para el reporte
     lastResult = {
         x:x, y:y, errors:errors, best:best, 
         polyVand: polyToString(coef_vand), 
@@ -384,17 +551,22 @@ computeBtn.addEventListener('click', ()=>{
         evalVals: evalVals
     };
 
+    // Finalmente se actualiza la gráfica
     plotResults(x,y, xsample, vals);
 
-  }catch(err){ console.error(err); alert('Error: '+err.message); }
+  }catch(err){ 
+    console.error(err); 
+    alert('Error: '+err.message); 
+  }
 });
 
+/* Construye el gráfico con los datos y las curvas de cada método */
 function plotResults(x,y, xsample, vals){
   const ctx = document.getElementById('chart').getContext('2d');
   if(chart) chart.destroy();
 
   const datasets = [];
-  // 1. Datos
+  // Puntos originales
   datasets.push({
     label: 'Datos',
     data: x.map((xi,i)=>({x:xi,y:y[i]})),
@@ -405,10 +577,11 @@ function plotResults(x,y, xsample, vals){
     type: 'scatter'
   });
 
+  // Colores fijos para cada método
   const colors = ['#e11d48','#06b6d4','#f59e0b','#10b981','#7c3aed'];
   const keys = Object.keys(vals);
   
-  // 2. Curvas
+  // Curvas de interpolación
   keys.forEach((k, idx)=>{
     const dataset = {
       label: k,
@@ -418,7 +591,7 @@ function plotResults(x,y, xsample, vals){
       tension:0.2,
       borderWidth:2,
       pointRadius:0,
-      showLine: true // <--- ESTO DIBUJA LAS LÍNEAS
+      showLine: true
     };
     datasets.push(dataset);
   });
@@ -433,16 +606,25 @@ function plotResults(x,y, xsample, vals){
   });
 }
 
+/* Descarga del informe de texto plano con los resultados */
 downloadBtn.addEventListener('click', ()=>{
   if(!lastResult) return alert('Primero calcula los métodos (Calcular y Graficar)');
   const txt = generateReportText(lastResult);
   const blob = new Blob([txt], {type:'text/plain;charset=utf-8'});
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = 'informe_interpolacion.txt'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  const a = document.createElement('a'); 
+  a.href = url; 
+  a.download = 'informe_interpolacion.txt'; 
+  document.body.appendChild(a); 
+  a.click(); 
+  a.remove(); 
+  URL.revokeObjectURL(url);
 });
 
+/* Restablece la interfaz al estado inicial */
 resetBtn.addEventListener('click', ()=>{ 
-    npointsInput.value=4; createTable(); 
+    npointsInput.value=4; 
+    createTable(); 
     document.getElementById('vandermondePoly').textContent='Vandermonde: —'; 
     document.getElementById('newtonPoly').textContent='Newton: —'; 
     document.getElementById('lagrangePoly').textContent='Lagrange: —'; 
@@ -454,6 +636,7 @@ resetBtn.addEventListener('click', ()=>{
     lastResult=null; 
 });
 
+/* Se genera una primera tabla por defecto al cargar la página */
 createTable();
 </script>
 </body>
