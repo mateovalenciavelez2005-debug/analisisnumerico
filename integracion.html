@@ -2,131 +2,158 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Integración Numérica</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.js"></script>
 
 <style>
-    body {
-        font-family: Arial;
-        margin: 20px;
-    }
-    input, button {
-        padding: 6px;
-        margin: 5px 0;
-    }
-    .resultado {
-        margin-top: 20px;
-        padding: 10px;
-        background: #f3f3f3;
-        border-left: 4px solid #0077cc;
-    }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 800px; margin: 20px auto; padding: 0 20px; color: #333; }
+    h2 { color: #2563eb; }
+    label { font-weight: bold; display: block; margin-top: 10px; }
+    input { padding: 8px; width: 100%; max-width: 300px; border: 1px solid #ccc; border-radius: 4px; margin-top: 5px; }
+    button { padding: 10px 20px; margin-top: 20px; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+    button:hover { background: #1d4ed8; }
+    .resultado { margin-top: 25px; padding: 15px; background: #f8fafc; border-left: 5px solid #2563eb; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-radius: 4px; }
+    .warning { color: #d97706; font-size: 0.9em; margin-bottom: 10px; padding: 8px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 4px; }
+    .method-box { margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
 </style>
 </head>
 
 <body>
+
 <h2>Integración Numérica: Trapecio, Simpson 1/3 y Simpson 3/8</h2>
+<p>Compara los métodos numéricos. El sistema ajustará <em>n</em> para que sea válido para todos los métodos.</p>
 
-<label>Ingrese f(x):</label><br>
-<input id="fx" type="text" value="sin(x) + x^2"><br>
+<label>Función f(x):</label>
+<input id="fx" type="text" value="sin(x) + x^2" placeholder="Ej: sin(x) + x^2">
 
-<label>Límite inferior (a):</label><br>
-<input id="a" type="number" step="any" value="0"><br>
+<label>Límite inferior (a):</label>
+<input id="a" type="number" step="any" value="0">
 
-<label>Límite superior (b):</label><br>
-<input id="b" type="number" step="any" value="3"><br>
+<label>Límite superior (b):</label>
+<input id="b" type="number" step="any" value="3">
 
-<label>Subintervalos (n):</label><br>
-<input id="n" type="number" step="1" value="6"><br><br>
+<label>Subintervalos (n):</label>
+<input id="n" type="number" step="1" value="6">
+<small style="color: #666; display:block; margin-top:4px">Para Simpson 1/3, n debe ser par. Para Simpson 3/8, n debe ser múltiplo de 3.</small>
 
-<button onclick="calcular()">Calcular</button>
+<button onclick="calcular()">Calcular Integrales</button>
 
-<div id="salida" class="resultado"></div>
+<div id="salida"></div>
 
 <script>
+    function calcular() {
+        const salida = document.getElementById("salida");
+        salida.innerHTML = ""; // Limpiar
+        
+        // 1. Obtener entradas
+        let f_str = document.getElementById("fx").value;
+        const a = parseFloat(document.getElementById("a").value);
+        const b = parseFloat(document.getElementById("b").value);
+        let n = parseInt(document.getElementById("n").value);
 
-function calcular() {
-    let f_str = document.getElementById("fx").value;
-    let a = parseFloat(document.getElementById("a").value);
-    let b = parseFloat(document.getElementById("b").value);
-    let n = parseInt(document.getElementById("n").value);
-
-    f_str = f_str.replaceAll("^", "**");
-
-    const f = x => math.evaluate(f_str, {x: x});
-
-    let mensajes = "";
-
-    if (n % 2 !== 0) {
-        mensajes += "Advertencia: Simpson 1/3 requiere n par. Se incrementó en 1.<br>";
-        n += 1;
-    }
-
-    if (n % 3 !== 0) {
-        mensajes += "Advertencia: Simpson 3/8 requiere n múltiplo de 3. Se ajustó.<br>";
-        while (n % 3 !== 0) n++;
-    }
-
-    const h = (b - a) / n;
-
-    const xi = [...Array(n + 1).keys()].map(i => a + i * h);
-    const fi = xi.map(v => f(v));
-
-    const sumTrap = fi.slice(1, -1).reduce((a, b) => a + b, 0);
-    const trap = (h / 2) * (fi[0] + 2 * sumTrap + fi[n]);
-
-    const sum4 = fi.filter((v, i) => i % 2 === 1 && i < n).reduce((a, b) => a + b, 0);
-    const sum2 = fi.filter((v, i) => i % 2 === 0 && i !== 0 && i !== n).reduce((a, b) => a + b, 0);
-    const simp13 = (h / 3) * (fi[0] + 4 * sum4 + 2 * sum2 + fi[n]);
-
-    const sum3 = fi.slice(1, n).reduce((a, b, i) => {
-        return a + ((i + 1) % 3 === 0 ? 2 * b : 3 * b);
-    }, 0);
-    const simp38 = (3 * h / 8) * (fi[0] + sum3 + fi[n]);
-
-    let integral_exacta = null;
-
-    try {
-        const expr = math.parse(f_str);
-        const F = math.integral(expr, "x");
-        integral_exacta = F.evaluate({x: b}) - F.evaluate({x: a});
-    } catch (e) {
-        const steps = 20000;
-        const hh = (b - a) / steps;
-        let s = 0;
-        for (let i = 0; i <= steps; i++) {
-            let xval = a + i * hh;
-            let w = (i === 0 || i === steps) ? 1 : (i % 2 === 0 ? 2 : 4);
-            s += w * f(xval);
+        if(isNaN(a) || isNaN(b) || isNaN(n) || n < 1) {
+            salida.innerHTML = "<p style='color:red'>Por favor, ingrese valores numéricos válidos.</p>";
+            return;
         }
-        integral_exacta = (hh / 3) * s;
-        mensajes += "La integral exacta simbólica no fue posible. Se usó integración numérica fina.<br>";
+
+        // 2. Validar n para que funcione en TODOS los métodos
+        // Trapecio: cualquiera. Simpson 1/3: par. Simpson 3/8: múltiplo de 3.
+        // Para comparar los tres a la vez, n debe ser múltiplo de 6.
+        let warnings = "";
+        if (n % 6 !== 0) {
+            let n_original = n;
+            // Buscar el siguiente múltiplo de 6
+            while (n % 6 !== 0) { n++; }
+            warnings += `<div class='warning'>⚠️ Se ajustó <b>n</b> de ${n_original} a <b>${n}</b> para ser compatible con ambos métodos de Simpson (debe ser múltiplo de 2 y de 3).</div>`;
+        }
+
+        // 3. Preparar la función
+        // Math.js maneja bien '^', pero nos aseguramos de capturar errores de sintaxis
+        let f;
+        try {
+            const node = math.parse(f_str);
+            const code = node.compile();
+            f = (x_val) => code.evaluate({x: x_val});
+            // Prueba rápida para ver si la función es válida
+            f(a); 
+        } catch (err) {
+            salida.innerHTML = `<p style='color:red'>Error en la función: ${err.message}</p>`;
+            return;
+        }
+
+        // 4. Calcular puntos (xi, yi)
+        const h = (b - a) / n;
+        const x = [];
+        const y = [];
+        for (let i = 0; i <= n; i++) {
+            let valX = a + i * h;
+            x.push(valX);
+            y.push(f(valX));
+        }
+
+        // --- MÉTODO DEL TRAPECIO ---
+        // I ≈ (h/2) * [y0 + 2(y1 + ... + yn-1) + yn]
+        let sumTrap = 0;
+        for (let i = 1; i < n; i++) { sumTrap += y[i]; }
+        const I_trap = (h / 2) * (y[0] + 2 * sumTrap + y[n]);
+
+        // --- MÉTODO SIMPSON 1/3 ---
+        // I ≈ (h/3) * [y0 + 4(impares) + 2(pares) + yn]
+        let sumImpar = 0;
+        let sumPar = 0;
+        for (let i = 1; i < n; i++) {
+            if (i % 2 !== 0) sumImpar += y[i];
+            else sumPar += y[i];
+        }
+        const I_13 = (h / 3) * (y[0] + 4 * sumImpar + 2 * sumPar + y[n]);
+
+        // --- MÉTODO SIMPSON 3/8 ---
+        // I ≈ (3h/8) * [y0 + 3y1 + 3y2 + 2y3 + ... + yn]
+        // Patrón de coeficientes: 1, 3, 3, 2, 3, 3, 2, ..., 1
+        let sum38 = 0;
+        for (let i = 1; i < n; i++) {
+            if (i % 3 === 0) sum38 += 2 * y[i]; // Múltiplo de 3
+            else sum38 += 3 * y[i];             // El resto
+        }
+        const I_38 = (3 * h / 8) * (y[0] + sum38 + y[n]);
+
+        // --- VALOR "EXACTO" (Calculado numéricamente con muy alta precisión) ---
+        // Como Math.js no integra simbólicamente, usamos Simpson 1/3 con muchos pasos (ej. 100,000)
+        const n_exact = 100000; 
+        const h_exact = (b - a) / n_exact;
+        let s_exact = f(a) + f(b);
+        for(let i = 1; i < n_exact; i+=2) s_exact += 4 * f(a + i*h_exact);
+        for(let i = 2; i < n_exact-1; i+=2) s_exact += 2 * f(a + i*h_exact);
+        const I_exacta = (h_exact / 3) * s_exact;
+
+        // --- CÁLCULO DE ERRORES ---
+        const error = (val) => Math.abs(I_exacta - val);
+        const errorRel = (val) => (Math.abs(I_exacta - val) / Math.abs(I_exacta)) * 100;
+
+        // 5. Mostrar Resultados
+        let html = `<div class="resultado">`;
+        html += warnings;
+        html += `<h3>Resultados (n = ${n}, h = ${h.toFixed(4)})</h3>`;
+        html += `<div class="method-box"><strong>Valor "Exacto" (aprox. fina):</strong> ${I_exacta.toFixed(8)}</div>`;
+
+        const printMethod = (name, val) => {
+            const errAbs = error(val).toExponential(4);
+            const errPorc = errorRel(val).toExponential(4);
+            return `<div class="method-box">
+                <b>${name}:</b> ${val.toFixed(8)}<br>
+                <span style="font-size:0.9em; color:#555">Error Abs: ${errAbs} | Error Rel: ${errPorc}%</span>
+            </div>`;
+        };
+
+        html += printMethod("Trapecio", I_trap);
+        html += printMethod("Simpson 1/3", I_13);
+        html += printMethod("Simpson 3/8", I_38);
+        html += `</div>`;
+
+        salida.innerHTML = html;
     }
-
-    const errTrap = Math.abs(integral_exacta - trap);
-    const err13 = Math.abs(integral_exacta - simp13);
-    const err38 = Math.abs(integral_exacta - simp38);
-
-    const relTrap = errTrap / Math.abs(integral_exacta);
-    const rel13 = err13 / Math.abs(integral_exacta);
-    const rel38 = err38 / Math.abs(integral_exacta);
-
-    document.getElementById("salida").innerHTML = `
-        ${mensajes}
-        <b>Integral exacta:</b> ${integral_exacta.toFixed(10)}<br><br>
-
-        <b>Trapecio compuesto:</b> ${trap.toFixed(10)}<br>
-        Error abs: ${errTrap.toExponential(3)} | Error rel: ${relTrap.toExponential(3)}<br><br>
-
-        <b>Simpson 1/3 compuesto:</b> ${simp13.toFixed(10)}<br>
-        Error abs: ${err13.toExponential(3)} | Error rel: ${rel13.toExponential(3)}<br><br>
-
-        <b>Simpson 3/8 compuesto:</b> ${simp38.toFixed(10)}<br>
-        Error abs: ${err38.toExponential(3)} | Error rel: ${rel38.toExponential(3)}<br>
-    `;
-}
-
 </script>
 
 </body>
 </html>
-
